@@ -12,7 +12,38 @@ The FacadeAI development environment includes:
 
 ## Setup Options
 
-### Option 1: Automatic Setup (Recommended)
+### Option 1: Docker Setup (Easiest)
+
+For a completely isolated and ready-to-use development environment:
+
+1. Make sure Docker and Docker Compose are installed on your system
+
+2. Run the Docker development environment:
+
+```bash
+chmod +x run_docker_dev.sh
+./run_docker_dev.sh
+```
+
+3. Access the container:
+
+```bash
+docker exec -it testbuild_facadeai-dev_1 bash
+```
+
+4. Inside the container, run the inference:
+
+```bash
+./dev_runlocal.sh
+```
+
+5. When finished, stop the container:
+
+```bash
+docker-compose -f docker-compose.dev.yml down
+```
+
+### Option 2: Conda Setup (Recommended for local development)
 
 1. Run the setup script:
 
@@ -34,7 +65,30 @@ chmod +x dev_runlocal.sh
 ./dev_runlocal.sh
 ```
 
-### Option 2: Manual Setup
+### Option 3: Python venv Setup
+
+1. Create the Python virtual environment:
+
+```bash
+chmod +x setup_venv.sh
+./setup_venv.sh
+```
+
+2. Activate the virtual environment:
+
+```bash
+source .venv/bin/activate  # On Linux/Mac
+# or
+.venv\Scripts\activate  # On Windows
+```
+
+3. Run the inference script:
+
+```bash
+./dev_runlocal.sh
+```
+
+### Option 4: Manual Setup
 
 1. Create the conda environment:
 
@@ -75,14 +129,7 @@ chmod +x dev_runlocal.sh
 If you don't want to use conda, you can set up a virtual environment with pip:
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate  # On Linux/Mac
-# or
-.venv\Scripts\activate  # On Windows
-
-pip install -r requirements.txt
-
-# Create dummy model and continue with steps 4-5 from Option 2
+./dev_runlocal.sh
 ```
 
 ## Directory Structure
@@ -94,6 +141,18 @@ The development environment follows this structure:
 ├── component.py           # Main inference component code
 ├── dev_runlocal.sh        # Development version of the run script
 ├── dev_environment.yml    # Conda environment for development
+├── requirements.txt       # Pip requirements for non-conda setup
+├── setup_dev.sh           # Setup script for development environment
+├── setup_venv.sh          # Setup script for venv environment
+├── verify_env.py          # Environment verification script
+├── Dockerfile.dev         # Dockerfile for development environment
+├── docker-compose.dev.yml # Docker Compose for development
+├── run_docker_dev.sh      # Script to run Docker development environment
+├── data/                  # Input/output data directory
+│   ├── images/            # Input images
+│   └── output/            # Output results
+└── models/                # MLflow model directories
+    └── Dev-Model/         # Dummy model for development
 ├── requirements.txt       # Pip requirements for non-conda setup
 ├── setup_dev.sh           # Setup script for development environment
 ├── utils.py               # Utility functions
