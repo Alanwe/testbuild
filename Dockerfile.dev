@@ -1,0 +1,42 @@
+# Development Docker image for FacadeAI (CPU-only version)
+FROM python:3.9-slim
+
+# Install build dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+      build-essential \
+      wget \
+      git \
+      libgl1-mesa-glx \
+      libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set up working directory
+WORKDIR /app
+
+# Copy requirements
+COPY requirements.txt /app/
+
+# Install Python dependencies
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# Copy source code
+COPY . /app/
+
+# Create directories
+RUN mkdir -p /app/data/images/B3/cam && \
+    mkdir -p /app/data/output && \
+    mkdir -p /app/models/Dev-Model
+
+# Create a dummy model
+RUN python src/old/create_dummy_model.py models/Dev-Model
+
+# Create sample test image
+RUN python -c "import numpy as np; from PIL import Image; img = np.ones((512, 512, 3), dtype=np.uint8) * 200; img[100:400, 100:400] = [150, 150, 150]; img[150:200, 250:350] = [100, 100, 100]; Image.fromarray(img).save('/app/data/images/B3/cam/sample_image.jpg')"
+
+# Make scripts executable
+RUN chmod +x dev_runlocal.sh verify_env.py
+
+# Default command
+CMD ["bash"]

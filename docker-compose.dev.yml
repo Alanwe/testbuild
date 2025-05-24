@@ -1,0 +1,19 @@
+version: '3'
+
+services:
+  facadeai-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    volumes:
+      # Mount source code for development
+      - ./component.py:/app/component.py
+      - ./utils.py:/app/utils.py
+      # Mount data directories for persistence
+      - ./data:/app/data
+    environment:
+      # Set environment variables for development
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1
+    # Keep the container running
+    command: bash -c "echo 'FacadeAI Development environment is ready!' && tail -f /dev/null"
