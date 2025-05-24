@@ -1,4 +1,10 @@
 #!/bin/bash
+# =============================================================================
+# dev_runlocal.sh - Script to run FacadeAI in development mode
+# =============================================================================
+# This script runs the FacadeAI inference component with settings appropriate
+# for local development, using the Dev-Model by default and enabling tracing.
+# =============================================================================
 set -e
 
 echo "Running FacadeAI Inference Component locally in development mode..."

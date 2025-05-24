@@ -1,4 +1,11 @@
 #!/bin/bash
+# =============================================================================
+# setup_dev.sh - Setup script for FacadeAI CPU-based development environment
+# =============================================================================
+# This script creates a conda environment, directory structure, and dummy model
+# required for developing and running the FacadeAI inference component locally
+# without requiring GPU resources.
+# =============================================================================
 set -e
 
 echo "Setting up FacadeAI development environment..."

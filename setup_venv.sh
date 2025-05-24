@@ -1,4 +1,11 @@
 #!/bin/bash
+# =============================================================================
+# setup_venv.sh - Setup script for FacadeAI using Python venv (no conda)
+# =============================================================================
+# This script creates a Python virtual environment, installs dependencies, and
+# sets up the directory structure and dummy model required for developing and
+# running the FacadeAI inference component locally without requiring conda.
+# =============================================================================
 set -e
 
 echo "Setting up FacadeAI development environment with venv..."
