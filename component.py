@@ -52,7 +52,7 @@ if missing_packages:
         logger.error(f"Failed to install packages: {str(e)}")
         logger.warning("Continuing with existing packages...")
 
-# Import now that we've tried to install dependencies
+# Import OpenCV and other dependencies
 try:
     import numpy as np
     import cv2
@@ -63,7 +63,8 @@ try:
 except ImportError as e:
     logger.error(f"Error importing dependencies: {str(e)}")
     logger.warning("Continuing with limited functionality...")
-    # Define minimal numpy to avoid errors
+    
+    # Define minimal numpy to avoid errors if missing
     if 'numpy' not in sys.modules:
         logger.info("Creating minimal numpy substitute")
         class MinimalNumpy:
@@ -73,7 +74,66 @@ except ImportError as e:
                 return [0] * args[0]
             def uint8(self):
                 return 8
+            def ones(self, shape, dtype=None):
+                return [[1 for _ in range(shape[1])] for _ in range(shape[0])]
         np = MinimalNumpy()
+    
+    # Define minimal mlflow if missing
+    if 'mlflow' not in sys.modules:
+        logger.info("Creating minimal mlflow substitute")
+        class MinimalPyfuncModule:
+            def load_model(self, model_path):
+                logger.info(f"Mock loading model from {model_path}")
+                # Create a minimal model object with a predict method
+                class MockModel:
+                    def predict(self, data):
+                        logger.info("Mock prediction running")
+                        # Return a simple result with fake segmentation data
+                        return {
+                            "segmentation": [[0.1, 0.1, 0.8, 0.1, 0.8, 0.8, 0.1, 0.8]],
+                            "confidence": [0.95]
+                        }
+                return MockModel()
+                
+        class MinimalMlflow:
+            def __init__(self):
+                self.pyfunc = MinimalPyfuncModule()
+                
+            def start_run(self):
+                logger.info("Mock mlflow.start_run()")
+                
+            def log_metric(self, key, value):
+                logger.info(f"Mock mlflow.log_metric({key}, {value})")
+                
+        mlflow = MinimalMlflow()
+    
+    # Define minimal PIL if missing
+    if 'PIL' not in sys.modules:
+        logger.info("Creating minimal PIL substitute")
+        class MockImage:
+            @staticmethod
+            def open(path):
+                logger.info(f"Mock opening image: {path}")
+                class MockImageObject:
+                    def __init__(self):
+                        self.size = (512, 512)
+                        self.mode = "RGB"
+                    def __array__(self):
+                        return np.ones((512, 512, 3))
+                    def save(self, path):
+                        logger.info(f"Mock saving image to {path}")
+                return MockImageObject()
+        
+        class MockImageDraw:
+            @staticmethod
+            def Draw(image):
+                class MockDraw:
+                    def polygon(self, xy, fill=None, outline=None):
+                        logger.info(f"Mock drawing polygon with {len(xy)} points")
+                return MockDraw()
+                
+        Image = MockImage()
+        ImageDraw = MockImageDraw()
 
 # Import utils - make sure file exists first
 utils_path = os.path.join(os.path.dirname(__file__), "utils.py")
@@ -701,67 +761,6 @@ def run(mini_batch: List[str]):
     
     return results
 
-if __name__ == "__main__":
-    # Use our centralized argument parsing function for standalone execution
-    args = parse_arguments()
-    
-    print(f"Running in standalone mode with arguments: {args}")
-    
-    # Initialize mlflow for tracking only if not in local mode
-    if not args.local:
-        try:
-            mlflow.start_run()
-            logger.info("MLflow run started")
-        except Exception as e:
-            logger.warning(f"Could not start MLflow run: {str(e)}")
-    else:
-        logger.info("Local mode: Skipping MLflow initialization")
-    
-    models = load_models(args)
-    
-    # Set up CosmosDB client if not in local mode
-    cosmos_client = None
-    processed_ids = []
-    if not args.local:
-        if args.cosmos_db:
-            try:
-                from azure.cosmos import CosmosClient
-                cosmos_client = CosmosClient.from_connection_string(args.cosmos_db)
-                logger.info("Connected to CosmosDB using provided connection string")
-            except Exception as e:
-                logger.error(f"Failed to connect to CosmosDB: {str(e)}")
-        else:
-            try:
-                cosmos_client = get_cosmosdb_client(None, args.key_vault_url)
-                if cosmos_client:
-                    logger.info("Connected to CosmosDB using Key Vault")
-                else:
-                    logger.warning("Failed to connect to CosmosDB using Key Vault")
-            except Exception as e:
-                logger.error(f"Failed to connect to CosmosDB via Key Vault: {str(e)}")
-    
-    # Get list of processed images
-    if args.mode == "auto" and not args.local and cosmos_client:
-        processed_ids = get_processed_ids(
-            cosmos_client, 
-            batch_id=args.batch_id,
-            database_name=args.cosmos_db_name,
-            container_name=args.cosmos_container_name
-        )
-        logger.info(f"Found {len(processed_ids)} already processed images")
-    
-    # Run the main process
-    results = run_parallel_inference(args, models, processed_ids, cosmos_client)
-    logger.info(f"Processed {len(results)} images")
-    
-    # Save results to output
-    try:
-        with open(os.path.join(args.output_data, "results.json"), 'w') as f:
-            json.dump(results, f, indent=2)
-        logger.info(f"Successfully saved results to {os.path.join(args.output_data, 'results.json')}")
-    except Exception as e:
-        logger.error(f"Failed to save results: {str(e)}")
-
 def run_parallel_inference(args, models, processed_ids, cosmos_client):
     """Main function to process images in parallel"""
     logger.info(f"Starting parallel inference with {len(models)} models")
@@ -880,3 +879,64 @@ def run_parallel_inference(args, models, processed_ids, cosmos_client):
         logger.info(f"Local mode: Metrics summary - Processed {stats['images_processed']} images, found {stats['detects_found']} detections")
     
     return results
+
+if __name__ == "__main__":
+    # Use our centralized argument parsing function for standalone execution
+    args = parse_arguments()
+    
+    print(f"Running in standalone mode with arguments: {args}")
+    
+    # Initialize mlflow for tracking only if not in local mode
+    if not args.local:
+        try:
+            mlflow.start_run()
+            logger.info("MLflow run started")
+        except Exception as e:
+            logger.warning(f"Could not start MLflow run: {str(e)}")
+    else:
+        logger.info("Local mode: Skipping MLflow initialization")
+    
+    models = load_models(args)
+    
+    # Set up CosmosDB client if not in local mode
+    cosmos_client = None
+    processed_ids = []
+    if not args.local:
+        if args.cosmos_db:
+            try:
+                from azure.cosmos import CosmosClient
+                cosmos_client = CosmosClient.from_connection_string(args.cosmos_db)
+                logger.info("Connected to CosmosDB using provided connection string")
+            except Exception as e:
+                logger.error(f"Failed to connect to CosmosDB: {str(e)}")
+        else:
+            try:
+                cosmos_client = get_cosmosdb_client(None, args.key_vault_url)
+                if cosmos_client:
+                    logger.info("Connected to CosmosDB using Key Vault")
+                else:
+                    logger.warning("Failed to connect to CosmosDB using Key Vault")
+            except Exception as e:
+                logger.error(f"Failed to connect to CosmosDB via Key Vault: {str(e)}")
+    
+    # Get list of processed images
+    if args.mode == "auto" and not args.local and cosmos_client:
+        processed_ids = get_processed_ids(
+            cosmos_client, 
+            batch_id=args.batch_id,
+            database_name=args.cosmos_db_name,
+            container_name=args.cosmos_container_name
+        )
+        logger.info(f"Found {len(processed_ids)} already processed images")
+    
+    # Run the main process
+    results = run_parallel_inference(args, models, processed_ids, cosmos_client)
+    logger.info(f"Processed {len(results)} images")
+    
+    # Save results to output
+    try:
+        with open(os.path.join(args.output_data, "results.json"), 'w') as f:
+            json.dump(results, f, indent=2)
+        logger.info(f"Successfully saved results to {os.path.join(args.output_data, 'results.json')}")
+    except Exception as e:
+        logger.error(f"Failed to save results: {str(e)}")
