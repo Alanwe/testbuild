@@ -65,7 +65,12 @@ img[100:400, 100:400] = [150, 150, 150]
 img[150:200, 250:350] = [100, 100, 100]
 os.makedirs('$INPUT_DS/$BATCH_ID/cam', exist_ok=True)
 Image.fromarray(img).save('$INPUT_DS/$BATCH_ID/cam/test_image.jpg')
-"
+" || (
+  echo "Error creating test image with Python. Using alternative method."
+  # Create a blank file if Python fails
+  mkdir -p $INPUT_DS/$BATCH_ID/cam
+  touch $INPUT_DS/$BATCH_ID/cam/test_image.jpg
+)
   echo "Created sample test image at $INPUT_DS/$BATCH_ID/cam/test_image.jpg"
 fi
 
@@ -81,5 +86,20 @@ python component.py \
   --model1 $MODEL1 \
   --local $LOCAL \
   --trace $TRACE
+
+# Check if any results were generated
+if [ -f "$OUTPUT_DIR/results.json" ]; then
+  echo "Results generated successfully in $OUTPUT_DIR/results.json"
+else
+  echo "Warning: No results.json file generated"
+fi
+
+# Check for trace files
+TRACE_FILES_COUNT=$(find $OUTPUT_DIR/trace -type f | wc -l)
+if [ "$TRACE_FILES_COUNT" -gt 0 ]; then
+  echo "Trace files generated: $TRACE_FILES_COUNT"
+else
+  echo "Warning: No trace files generated"
+fi
 
 echo "Process completed successfully."
