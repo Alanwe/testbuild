@@ -1,0 +1,177 @@
+$schema: https://azuremlschemas.azureedge.net/latest/parallelComponent.schema.json
+name: parallel_facade_inference
+type: parallel
+description: Parallel processing of facade images for AI-based defect detection using sliding window technique
+display_name: Parallel Facade AI Inference
+version: 4.0.8
+inputs:
+  input_ds:
+    type: uri_folder
+    description: Input dataset containing images to process
+  batch_id:
+    type: string
+    description: Batch ID for processing
+  mode:
+    type: string
+    default: auto
+    description: Processing mode (auto or force)
+  window_size:
+    type: integer
+    default: 512
+    description: Size of sliding window for image processing
+  overlap:
+    type: integer
+    default: 64
+    description: Overlap between sliding windows
+  confidence:
+    type: integer
+    default: 30
+    description: Default confidence threshold for detections
+  model1:
+    type: mlflow_model
+    description: First model to use for inference
+  model2:
+    type: mlflow_model
+    optional: true
+    description: Second model to use for inference
+  model3:
+    type: mlflow_model
+    optional: true
+    description: Third model to use for inference
+  model4:
+    type: mlflow_model
+    optional: true
+    description: Fourth model to use for inference
+  model5:
+    type: mlflow_model
+    optional: true
+    description: Fifth model to use for inference
+  model6:
+    type: mlflow_model
+    optional: true
+    description: Sixth model to use for inference
+  model7:
+    type: mlflow_model
+    optional: true
+    description: Seventh model to use for inference
+  model8:
+    type: mlflow_model
+    optional: true
+    description: Eighth model to use for inference
+  model1_confidence:
+    type: integer
+    default: 50
+    description: Confidence threshold for model 1
+  model2_confidence:
+    type: integer
+    default: 50
+    description: Confidence threshold for model 2
+  model3_confidence:
+    type: integer
+    default: 50
+    description: Confidence threshold for model 3
+  model4_confidence:
+    type: integer
+    default: 50
+    description: Confidence threshold for model 4
+  model5_confidence:
+    type: integer
+    default: 50
+    description: Confidence threshold for model 5
+  model6_confidence:
+    type: integer
+    default: 50
+    description: Confidence threshold for model 6
+  model7_confidence:
+    type: integer
+    default: 50
+    description: Confidence threshold for model 7
+  model8_confidence:
+    type: integer
+    default: 50
+    description: Confidence threshold for model 8
+  cosmos_db:
+    type: string
+    optional: true
+    description: CosmosDB connection string
+  key_vault_url:
+    type: string
+    default: "https://facade-keyvault.vault.azure.net/"
+    description: Azure Key Vault URL
+  cosmos_db_name:
+    type: string
+    default: "FacadeDB"
+    description: CosmosDB database name
+  cosmos_container_name:
+    type: string
+    default: "Images"
+    description: CosmosDB container name
+  local:
+    type: boolean
+    default: false
+    description: Whether to run in local mode
+  trace:
+    type: boolean
+    default: false
+    description: Whether to save trace images and JSON
+
+outputs:
+  output_data:
+    type: uri_folder
+    description: Output folder for results
+
+code: ./src
+
+
+mini_batch_size: "30"
+resources:
+  instance_count: 2
+mini_batch_error_threshold: 5
+logging_level: "DEBUG"
+input_data: ${{inputs.input_ds}}
+max_concurrency_per_instance: 2
+retry_settings:
+  max_retries: 2
+  timeout: 60
+
+task:
+  type: run_function
+  code: src
+  entry_script: component.py
+  environment:
+    conda_file: ./environment.yml
+    image: mcr.microsoft.com/azureml/openmpi4.1.0-ubuntu20.04
+  environment_variables:
+    PYTHONPATH: "."
+    PYTHONUNBUFFERED: "1"
+
+  program_arguments: >-
+    --input_ds ${{inputs.input_ds}} 
+    --output_data ${{outputs.output_data}} 
+    --batch_id ${{inputs.batch_id}} 
+    --mode ${{inputs.mode}} 
+    --window_size ${{inputs.window_size}} 
+    --overlap ${{inputs.overlap}} 
+    --confidence ${{inputs.confidence}} 
+    --model1 ${{inputs.model1}} 
+    --model2 $[[inputs.model2]] 
+    --model3 $[[inputs.model3]] 
+    --model4 $[[inputs.model4]] 
+    --model5 $[[inputs.model5]] 
+    --model6 $[[inputs.model6]] 
+    --model7 $[[inputs.model7]] 
+    --model8 $[[inputs.model8]] 
+    --model1_confidence ${{inputs.model1_confidence}} 
+    --model2_confidence ${{inputs.model2_confidence}} 
+    --model3_confidence ${{inputs.model3_confidence}} 
+    --model4_confidence ${{inputs.model4_confidence}} 
+    --model5_confidence ${{inputs.model5_confidence}} 
+    --model6_confidence ${{inputs.model6_confidence}} 
+    --model7_confidence ${{inputs.model7_confidence}} 
+    --model8_confidence ${{inputs.model8_confidence}} 
+    --cosmos_db $[[inputs.cosmos_db]] 
+    --key_vault_url "${{inputs.key_vault_url}}" 
+    --cosmos_db_name "${{inputs.cosmos_db_name}}" 
+    --cosmos_container_name "${{inputs.cosmos_container_name}}" 
+    --local ${{inputs.local}} 
+    --trace ${{inputs.trace}}

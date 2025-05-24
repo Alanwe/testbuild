@@ -1,0 +1,38 @@
+artifact_path: outputs/mlflow-model
+flavors:
+  python_function:
+    artifacts:
+      model:
+        path: artifacts/_model_impl_0vbyd72g.pt
+        uri: /mnt/azureml/cr/j/e432e72912b5455ea65f202e01a1c5fa/exe/wd/_model_impl_0vbyd72g.pt
+      settings:
+        path: artifacts/settings.json
+        uri: /mnt/azureml/cr/j/e432e72912b5455ea65f202e01a1c5fa/exe/wd/tmpu1kypifq/settings.json
+    cloudpickle_version: 2.2.1
+    code: null
+    env:
+      conda: conda.yaml
+      virtualenv: python_env.yaml
+    loader_module: mlflow.pyfunc.model
+    python_model: python_model.pkl
+    python_version: 3.9.7
+    streamable: false
+is_signature_from_type_hint: false
+metadata:
+  azureml.base_image: mcr.microsoft.com/azureml/curated/ai-ml-automl-dnn-vision-gpu:19
+  azureml.engine: automl
+  base_model_name: maskrcnn_resnet50_fpn
+  finetuning_task: image-instance-segmentation
+  is_automl_model: true
+  training_run_id: lemon_airport_5dl70fxmn0_HD_0
+mlflow_version: 2.21.3
+model_size_bytes: 351197955
+model_uuid: b676ab377d184b0184fa5cd0b424af03
+prompts: null
+run_id: lemon_airport_5dl70fxmn0_HD_0
+signature:
+  inputs: '[{"type": "binary", "name": "image", "required": true}]'
+  outputs: '[{"type": "string", "name": "boxes", "required": true}]'
+  params: null
+type_hint_from_example: false
+utc_time_created: '2025-05-21 09:29:14.399236'

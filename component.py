@@ -1,0 +1,813 @@
+#!/usr/bin/env python3
+"""
+Parallel Facade AI Inference Component
+This component processes images in parallel using sliding window technique
+and AI models for facade defect detection
+"""
+import os
+import sys
+import time
+import glob
+import json
+import numpy as np
+import logging
+import warnings
+import argparse
+import subprocess
+import importlib.util
+from pathlib import Path
+from typing import List
+
+# Configure logging first before other imports
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+# Log the search paths
+logger.info(f"Python sys.path: {sys.path}")
+
+# Import OpenCV and other dependencies
+try:
+    import cv2
+    import mlflow
+    from PIL import ImageDraw
+    from PIL import Image
+    logger.info("Successfully imported core dependencies")
+except ImportError as e:
+    logger.error(f"Error importing dependencies: {str(e)}")
+    raise
+
+# Import utils - make sure file exists first
+utils_path = os.path.join(os.path.dirname(__file__), "utils.py")
+if not os.path.exists(utils_path):
+    logger.error(f"Utils module not found at {utils_path}")
+    raise ImportError(f"Utils module not found at {utils_path}")
+
+try:
+    from utils import sliding_window, log_inference_metrics, update_cosmos_db, \
+        get_cosmosdb_client, get_processed_ids, \
+        run_generic_model_predict, \
+        create_coordinate_pairs, multiply_coordinates, save_local_results, \
+        flatten_polygon, recalculate_coordinates, flatten_coordinates, \
+        calculate_bbox_from_segmentation, calculate_polygon_area, \
+        MODEL_CATEGORY_IDS, \
+        get_input_schema, get_dtypes, load_image_as_array, load_image_as_bytes, nparray_tolist, check_model_dependencies
+    logger.info("Successfully imported utils module")
+except ImportError as e:
+    logger.error(f"Error importing utils module: {str(e)}")
+    raise
+
+def parse_arguments():
+    """Parse command line arguments for the component"""
+    parser = argparse.ArgumentParser(description="Facade AI Inference Component")
+    
+    # Input/output arguments
+    parser.add_argument('--input_ds', type=str, help='Input dataset path')
+    parser.add_argument('--output_data', type=str, help='Output folder for results')
+    
+    # Processing configuration
+    parser.add_argument('--batch_id', type=str, help='Batch ID for processing')
+    parser.add_argument('--mode', type=str, default='auto', choices=["force", "auto"], 
+                        help='Mode of operation (auto/force)')
+    parser.add_argument('--window_size', type=int, default=512, help='Sliding window size')
+    parser.add_argument('--overlap', type=int, default=64, help='Sliding window overlap')
+    parser.add_argument('--confidence', type=int, default=30, help='Default confidence threshold for detections')
+    
+    # Model paths - direct paths to models
+    parser.add_argument('--model1', type=str, help='Model 1 path')
+    parser.add_argument('--model2', type=str, help='Model 2 path')
+    parser.add_argument('--model3', type=str, help='Model 3 path')
+    parser.add_argument('--model4', type=str, help='Model 4 path')
+    parser.add_argument('--model5', type=str, help='Model 5 path')
+    parser.add_argument('--model6', type=str, help='Model 6 path')
+    parser.add_argument('--model7', type=str, help='Model 7 path')
+    parser.add_argument('--model8', type=str, help='Model 8 path')
+    
+    # Add per-model confidence thresholds
+    parser.add_argument('--model1_confidence', type=int, default=50, help='Confidence threshold for model 1')
+    parser.add_argument('--model2_confidence', type=int, default=50, help='Confidence threshold for model 2')
+    parser.add_argument('--model3_confidence', type=int, default=50, help='Confidence threshold for model 3')
+    parser.add_argument('--model4_confidence', type=int, default=50, help='Confidence threshold for model 4')
+    parser.add_argument('--model5_confidence', type=int, default=50, help='Confidence threshold for model 5')
+    parser.add_argument('--model6_confidence', type=int, default=50, help='Confidence threshold for model 6')
+    parser.add_argument('--model7_confidence', type=int, default=50, help='Confidence threshold for model 7')
+    parser.add_argument('--model8_confidence', type=int, default=50, help='Confidence threshold for model 8')
+    
+    # CosmosDB configuration
+    parser.add_argument('--cosmos_db', type=str, help='CosmosDB connection string')
+    parser.add_argument('--key_vault_url', type=str, default="https://facade-keyvault.vault.azure.net/",
+                       help='Azure Key Vault URL')
+    parser.add_argument('--cosmos_db_name', type=str, default="FacadeDB", help='CosmosDB database name')
+    parser.add_argument('--cosmos_container_name', type=str, default="Images", help='CosmosDB container name')
+    
+    # Execution mode configuration
+    parser.add_argument('--local', type=lambda x: str(x).lower() in ('true', 't', 'yes', 'y', '1'), 
+                       default=False, help='Use local model and data')
+    parser.add_argument('--trace', action='store_true', help='Enable trace image saving')
+    
+    # Parse known args only, ignoring additional args added by ParallelRunStep
+    args, unknown = parser.parse_known_args()
+    if unknown:
+        logger.warning(f"Ignoring unknown arguments: {unknown}")
+    
+    # Clean up string parameters if they have quotes
+    for arg_name, arg_value in vars(args).items():
+        if isinstance(arg_value, str) and arg_value.startswith('"') and arg_value.endswith('"'):
+            setattr(args, arg_name, arg_value[1:-1])
+            logger.info(f"Cleaned quotes from {arg_name}: {getattr(args, arg_name)}")
+    
+    # Ensure args.local is a boolean
+    if not isinstance(args.local, bool):
+        logger.info(f"Converting args.local from {type(args.local)} to bool")
+        args.local = bool(args.local) if not isinstance(args.local, str) else args.local.lower() in ('true', 't', 'yes', 'y', '1')
+    
+    logger.info(f"Parsed arguments: {vars(args)}")
+    return args
+
+def load_models(args):
+    """Load models based on input arguments using approach from good.py"""
+    logger.info("Loading models...")
+    models = {}
+    
+    # Create a list of model paths and their confidence thresholds from args
+    model_info = []
+    for i in range(1, 9):
+        model_path = getattr(args, f'model{i}', None)
+        confidence = getattr(args, f'model{i}_confidence', 50)
+        
+        # Skip if model_path is empty or not specified
+        if model_path:
+            model_info.append((f"model{i}", model_path, confidence))
+        else:
+            logger.info(f"Model{i} path not specified")
+    
+    logger.info(f"Model paths to load: {model_info}")
+    if not model_info:
+        logger.warning("No models specified in arguments")
+        return models
+    
+    # Process each provided model
+    for i, (model_param, model_path, confidence) in enumerate(model_info):
+        try:
+            # Extract model name for category ID lookup
+            if isinstance(model_path, str) and model_path.startswith('azureml:'):
+                # Extract name from azureml:name:version format
+                model_name = model_path.split(':', 1)[1]
+                if ':' in model_name:
+                    model_name = model_name.split(':', 1)[0]
+            else:
+                # Extract model name from directory path
+                model_name = os.path.basename(model_path) if os.path.sep in str(model_path) else model_path
+            
+            logger.info(f"Loading model {i+1}: {model_name} from {model_path}")
+            
+            try:
+                # Check model dependencies first
+                check_model_dependencies(model_path)
+                
+                # Simplified loading approach based on good.py
+                model = mlflow.pyfunc.load_model(str(model_path))
+                schema = get_input_schema(model_path)
+                dtypes = get_dtypes(schema)
+                
+                logger.info(f"Successfully loaded model {model_name}")
+                
+                # Add model to the dictionary with appropriate category ID and confidence
+                model_category_id = MODEL_CATEGORY_IDS.get(model_name.lower(), i+1)
+                models[model_name] = {
+                    "model": model,
+                    "confidence": confidence,
+                    "class_id": model_category_id,
+                    "schema": schema,
+                    "dtypes": dtypes
+                }
+                logger.info(f"Added model {model_name} with category ID {model_category_id} and confidence {confidence}")
+                
+            except Exception as e:
+                logger.error(f"Failed to load model {model_name}: {str(e)}")
+                
+        except Exception as e:
+            logger.error(f"Error processing model path {model_path}: {str(e)}")
+    
+    if not models:
+        logger.warning("No models could be loaded.")
+    else:
+        logger.info(f"Successfully loaded {len(models)} models")
+        
+    return models
+
+def process_image(image_path, image_id, models, args, processed_ids=None):
+    """Process a single image with the loaded models"""
+    # Stats for tracking metrics
+    stats = {
+        'slices_processed': 0,
+        'total_slice_inferences': 0,
+        'total_full_inferences': 0,
+        'detects_found': 0
+    }
+    
+    logger.info(f"Processing image: {image_path}")
+    
+    # Skip if in auto mode and image has already been processed
+    if args.mode == "auto" and processed_ids and image_id in processed_ids:
+        logger.info(f"Skipping already processed image: {image_id}")
+        return []
+    
+    # Read the image - use approach from good.py
+    try:
+        # Read image using OpenCV
+        image = cv2.imread(image_path)
+        if image is None:
+            # Fall back to PIL/numpy
+            image = load_image_as_array(image_path)
+            
+        if image is None or image.size == 0:
+            logger.error(f"Failed to read image: {image_path}")
+            return []
+            
+        height, width = image.shape[:2]
+        logger.info(f"Image dimensions: {width}x{height}")
+        
+        # Create sliding windows
+        windows = sliding_window(
+            image, 
+            window_size=args.window_size, 
+            overlap=args.overlap
+        )
+        logger.info(f"Created {len(windows)} sliding windows")
+        
+        all_annotations = []
+        
+        # For trace mode, ensure trace directory exists
+        if args.trace:
+            os.makedirs(os.path.join(args.output_data, "trace"), exist_ok=True)
+        
+        # Process with each model
+        for model_name, model_info in models.items():
+            logger.info(f"Running inference with model: {model_name}")
+            inference_start_time = time.time()
+            
+            model_object = model_info["model"]
+            confidence_threshold = model_info["confidence"]
+            category_id = model_info["class_id"]
+            
+            # Use sliding window approach
+            window_inference_start = time.time()
+            window_detections = 0
+            
+            for i, window_data in enumerate(windows):
+                try:
+                    # Extract window and offset
+                    window, offset = window_data
+                    offset_x, offset_y = offset
+                    
+                    stats['slices_processed'] += 1
+                    stats['total_slice_inferences'] += 1
+                    
+                    # Use simplified prediction with good.py approach
+                    detections = run_generic_model_predict(model_object, window, confidence_threshold=confidence_threshold)
+                    
+                    if not detections:
+                        continue
+                    
+                    window_detections += len(detections)
+                    
+                    # Process each detection
+                    for detection in detections:
+                        # Get segmentation data
+                        seg_data = detection.get("segmentation", [])
+                        
+                        # Skip if no segmentation data
+                        if not seg_data:
+                            logger.warning(f"Detection in window {i} missing segmentation data, skipping")
+                            continue
+                        
+                        # Apply window offset to coordinates
+                        segmentation = recalculate_coordinates(seg_data, (offset_x, offset_y))
+                        
+                        # Ensure we have a valid format
+                        if not segmentation:
+                            logger.warning(f"Empty segmentation after recalculation, skipping")
+                            continue
+                            
+                        # Flatten if needed
+                        segmentation = flatten_polygon(segmentation)
+                        
+                        # Calculate bounding box and area
+                        bbox = calculate_bbox_from_segmentation(segmentation)
+                        area = calculate_polygon_area(segmentation)
+                        
+                        # Create annotation
+                        annotation = {
+                            "id": len(all_annotations) + 1,
+                            "image_id": image_id,
+                            "category_id": category_id,
+                            "segmentation": [segmentation],
+                            "area": area,
+                            "bbox": bbox,
+                            "iscrowd": 0,
+                            "objectId": f"{int(time.time() * 1000)}"
+                        }
+                        all_annotations.append(annotation)
+                
+                except Exception as e:
+                    logger.error(f"Error processing window {i} with model {model_name}: {str(e)}")
+            
+            window_inference_time = time.time() - window_inference_start
+            logger.info(f"Window inference with {model_name} completed in {window_inference_time:.2f} seconds with {window_detections} detections across {len(windows)} windows")
+            stats['detects_found'] += window_detections
+            
+            # Log total inference time for this model across all windows
+            total_inference_time = time.time() - inference_start_time
+            log_inference_metrics(model_name, total_inference_time, len(all_annotations), args.local)
+        
+        # Save trace visualization if enabled and annotations were found
+        if args.trace and all_annotations:
+            trace_path = os.path.join(args.output_data, "trace")
+            os.makedirs(trace_path, exist_ok=True)
+            image_basename = os.path.splitext(os.path.basename(image_path))[0]
+            
+            # Save the JSON of all annotations for tracing
+            trace_json = os.path.join(trace_path, f"all_models_{image_basename}.json")
+            try:
+                with open(trace_json, 'w') as f:
+                    json.dump(all_annotations, f, indent=2)
+                logger.info(f"Saved trace JSON to {trace_json}")
+            except Exception as e:
+                logger.error(f"Error saving trace JSON: {str(e)}")
+        
+        return all_annotations
+    
+    except Exception as e:
+        logger.error(f"Error processing image {image_path}: {str(e)}")
+        return []
+
+def init():
+    """Initialize the parallel component"""
+    global args, models, cosmos_client, processed_ids, stats
+    
+    logger.info("Initializing Parallel Facade AI Inference Component")
+    
+    # initialize stats tracking
+    stats = {
+        'images_processed': 0,
+        'detects_found': 0,
+        'database_updates': 0,
+        'slices_processed': 0,
+        'total_slice_inferences': 0,
+        'total_full_inferences': 0
+    }
+    
+    # Parse arguments
+    try:
+        args = parse_arguments()
+    except Exception as e:
+        logger.error(f"Error parsing arguments: {str(e)}")
+        raise
+    
+    try:
+        models = load_models(args)
+        if not models:
+            logger.warning("No models selected for inference. Component may not produce results.")
+    except Exception as e:
+        logger.error(f"Error loading models: {str(e)}")
+        models = {}
+    
+    # Set up CosmosDB client if not in local mode
+    cosmos_client = None
+    processed_ids = []
+    if not args.local:
+        try:
+            logger.info("Connecting to CosmosDB...")
+            if args.cosmos_db:
+                cosmos_client = get_cosmosdb_client(connection_string=args.cosmos_db)
+            else:
+                cosmos_client = get_cosmosdb_client(key_vault_url=args.key_vault_url)
+              
+            # Get already processed image IDs if in auto mode
+            if args.mode == "auto" and cosmos_client:
+                processed_ids = get_processed_ids(
+                    cosmos_client,
+                    batch_id=args.batch_id,
+                    database_name=args.cosmos_db_name,
+                    container_name=args.cosmos_container_name
+                )
+                logger.info(f"Found {len(processed_ids)} previously processed image IDs")
+        except Exception as e:
+            logger.error(f"Failed to initialize CosmosDB client: {str(e)}")
+            if not args.local:
+                logger.warning("Continuing in local mode due to CosmosDB connection failure")
+                args.local = True
+    else:
+        logger.info("Running in local mode, CosmosDB will not be used")
+
+def run(mini_batch: List[str]):
+    """Process a batch of files"""
+    global args, models, cosmos_client, processed_ids
+    
+    logger.info(f"Processing mini-batch of {len(mini_batch)} files")
+    
+    results = []
+    batch_stats = {
+        'images_processed': 0,
+        'detects_found': 0,
+        'database_updates': 0
+    }
+    
+    # If no models were loaded, log warning and return empty results
+    if not models:
+        logger.warning("No models available for inference. Returning empty results.")
+        return ["No models available for inference"]
+    
+    for file_path in mini_batch:
+        # Only process image files
+        if not file_path.lower().endswith(('.jpg', '.jpeg', '.png')):
+            logger.info(f"Skipping non-image file: {file_path}")
+            continue
+        
+        # Extract image ID from file path
+        image_id = os.path.splitext(os.path.basename(file_path))[0]
+        
+        # Process the image
+        annotations = process_image(file_path, image_id, models, args, processed_ids)
+        
+        if not annotations:
+            logger.info(f"No annotations found for image {image_id}")
+            continue
+        
+        batch_stats['detects_found'] += len(annotations)
+        batch_stats['images_processed'] += 1
+          
+        # Update CosmosDB if not in local mode
+        if not args.local and cosmos_client:
+            try:
+                success = update_cosmos_db(
+                    cosmos_client,
+                    image_id,
+                    annotations,
+                    batch_id=args.batch_id,
+                    database_name=args.cosmos_db_name,
+                    container_name=args.cosmos_container_name
+                )
+                if success:
+                    logger.info(f"Successfully updated CosmosDB record for {image_id}")
+                    batch_stats['database_updates'] += 1
+                else:
+                    logger.error(f"Failed to update CosmosDB record for {image_id}")
+                    # Save locally as backup
+                    save_local_results(
+                        os.path.join(args.output_data, "failed_updates"),
+                        image_id,
+                        annotations
+                    )
+            except Exception as e:
+                logger.error(f"Exception updating CosmosDB record for {image_id}: {str(e)}")
+                # Save locally as backup
+                save_local_results(
+                    os.path.join(args.output_data, "failed_updates"),
+                    image_id,
+                    annotations
+                )
+        
+        # If local mode or as backup, save locally
+        save_local_results(
+            args.output_data,
+            image_id,
+            annotations
+        )
+        
+        # Add to results
+        results.append(f"{image_id}: {len(annotations)} annotations")
+    
+    # Log stats for this mini-batch
+    logger.info(f"Mini-batch stats: Processed {batch_stats['images_processed']} images, found {batch_stats['detects_found']} detections")
+    
+    return results
+
+if __name__ == "__main__":
+    # Use our centralized argument parsing function for standalone execution
+    args = parse_arguments()
+    
+    print(f"Running in standalone mode with arguments: {args}")
+    
+    # Initialize mlflow for tracking only if not in local mode
+    if not args.local:
+        try:
+            mlflow.start_run()
+            logger.info("MLflow run started")
+        except Exception as e:
+            logger.warning(f"Could not start MLflow run: {str(e)}")
+    else:
+        logger.info("Local mode: Skipping MLflow initialization")
+    
+    models = load_models(args)
+    
+    # Set up CosmosDB client if not in local mode
+    cosmos_client = None
+    processed_ids = []
+    if not args.local:
+        try:
+            logger.info("Connecting to CosmosDB...")
+            if args.cosmos_db:
+                cosmos_client = get_cosmosdb_client(connection_string=args.cosmos_db)
+                logger.info("Connected to CosmosDB using provided connection string")
+            else:
+                cosmos_client = get_cosmosdb_client(key_vault_url=args.key_vault_url)
+                if cosmos_client:
+                    logger.info("Connected to CosmosDB using Key Vault")
+                else:
+                    logger.warning("Failed to connect to CosmosDB using Key Vault")
+        except Exception as e:
+            logger.error(f"Failed to connect to CosmosDB: {str(e)}")
+    
+    # Get list of processed images
+    if args.mode == "auto" and not args.local and cosmos_client:
+        processed_ids = get_processed_ids(
+            cosmos_client, 
+            batch_id=args.batch_id,
+            database_name=args.cosmos_db_name,
+            container_name=args.cosmos_container_name
+        )
+        logger.info(f"Found {len(processed_ids)} already processed images")
+    
+    # Find all images in input dataset
+    input_path = args.input_ds
+    batch_id = args.batch_id
+    
+    # Set up paths
+    batch_path = os.path.join(input_path, f"B{batch_id}" if not str(batch_id).startswith("B") else str(batch_id))
+    cam_path = os.path.join(batch_path, "cam")
+    
+    if not os.path.exists(cam_path):
+        logger.warning(f"Camera path does not exist: {cam_path}")
+        # Try alternative path formats
+        cam_path = os.path.join(input_path, "cam")
+        if not os.path.exists(cam_path):
+            logger.error(f"Could not find camera images path")
+            sys.exit(1)
+    
+    # Get list of images
+    image_files = glob.glob(os.path.join(cam_path, "*.jpg"))
+    image_files.extend(glob.glob(os.path.join(cam_path, "*.jpeg")))
+    image_files.extend(glob.glob(os.path.join(cam_path, "*.png")))
+    
+    logger.info(f"Found {len(image_files)} images in {cam_path}")
+    
+    if not image_files:
+        logger.error(f"No image files found in {cam_path}")
+        sys.exit(1)
+    
+    # Process each image
+    results = []
+    for file_path in image_files:
+        # Extract image ID from file path
+        image_id = os.path.splitext(os.path.basename(file_path))[0]
+          # Process the image
+        annotations = process_image(file_path, image_id, models, args, processed_ids)
+        
+        if annotations:
+            # Save results
+            save_local_results(args.output_data, image_id, annotations)
+            results.append(f"{image_id}: {len(annotations)} annotations")
+    
+    # Save overall results
+    try:
+        with open(os.path.join(args.output_data, "results.json"), 'w') as f:
+            json.dump(results, f, indent=2)
+        logger.info(f"Successfully saved results to {os.path.join(args.output_data, 'results.json')}")
+    except Exception as e:
+        logger.error(f"Failed to save results: {str(e)}")
+
+def run_parallel_inference(args, models, processed_ids, cosmos_client):
+    """Main function to process images in parallel"""
+    logger.info(f"Starting parallel inference with {len(models)} models")
+    
+    # Stats for tracking metrics
+    stats = {
+        'images_processed': 0,
+        'detects_found': 0,
+        'database_updates': 0
+    }
+    
+    # Find all images in input dataset
+    input_path = args.input_ds
+    batch_id = args.batch_id
+    
+    # Set up paths
+    batch_path = os.path.join(input_path, f"B{batch_id}" if not str(batch_id).startswith("B") else str(batch_id))
+    cam_path = os.path.join(batch_path, "cam")
+    
+    if not os.path.exists(cam_path):
+        logger.warning(f"Camera path does not exist: {cam_path}")
+        # Try alternative path formats
+        cam_path = os.path.join(input_path, "cam")
+        if not os.path.exists(cam_path):
+            logger.error(f"Could not find camera images path")
+            return []
+    
+    # Get list of images
+    image_files = glob.glob(os.path.join(cam_path, "*.jpg"))
+    image_files.extend(glob.glob(os.path.join(cam_path, "*.jpeg")))
+    image_files.extend(glob.glob(os.path.join(cam_path, "*.png")))
+    
+    logger.info(f"Found {len(image_files)} images in {cam_path}")
+    
+    if not image_files:
+        logger.error(f"No image files found in {cam_path}")
+        return []
+    
+    # Process each image
+    results = []
+    for file_path in image_files:
+        # Get image ID from filename
+        image_basename = os.path.basename(file_path)
+        image_id = os.path.splitext(image_basename)[0]
+        
+        # Skip already processed images unless in force mode
+        if args.mode == "auto" and image_id in processed_ids:
+            logger.info(f"Skipping already processed image: {image_id}")
+            continue
+        
+        logger.info(f"Processing image: {image_id}")
+        stats['images_processed'] += 1
+        
+        # Process the image
+        annotations = process_image(file_path, image_id, models, args)
+        
+        if not annotations:
+            logger.info(f"No annotations found for image {image_id}")
+            continue
+          
+        stats['detects_found'] += len(annotations)
+        
+        # Update CosmosDB if not in local mode
+        if not args.local and cosmos_client:
+            try:
+                success = update_cosmos_db(
+                    cosmos_client,
+                    image_id,
+                    annotations,
+                    batch_id=args.batch_id,
+                    database_name=args.cosmos_db_name,
+                    container_name=args.cosmos_container_name
+                )
+                if success:
+                    logger.info(f"Successfully updated CosmosDB record for {image_id}")
+                    stats['database_updates'] += 1
+                else:
+                    logger.error(f"Failed to update CosmosDB record for {image_id}")
+                    # Save locally as backup
+                    save_local_results(
+                        os.path.join(args.output_data, "failed_updates"),
+                        image_id,
+                        annotations
+                    )
+            except Exception as e:
+                logger.error(f"Exception updating CosmosDB record for {image_id}: {str(e)}")
+                # Save locally as backup
+                save_local_results(
+                    os.path.join(args.output_data, "failed_updates"),
+                    image_id,
+                    annotations
+                )
+        
+        # If local mode or as backup, save locally
+        save_local_results(
+            args.output_data,
+            image_id,
+            annotations
+        )
+        
+        # Add to results
+        results.append(f"{image_id}: {len(annotations)} annotations")
+      # Log stats for this batch
+    logger.info(f"Batch stats: Processed {stats['images_processed']} images, found {stats['detects_found']} detections")
+    
+    # Try to log metrics
+    if not args.local:
+        try:
+            mlflow.log_metric("images_processed", stats['images_processed'])
+            mlflow.log_metric("detections_found", stats['detects_found'])
+            mlflow.log_metric("database_updates", stats['database_updates'])
+        except Exception as e:
+            logger.warning(f"Could not log metrics: {str(e)}")
+    else:
+        logger.info(f"Local mode: Metrics summary - Processed {stats['images_processed']} images, found {stats['detects_found']} detections")
+    
+    return results
+
+if __name__ == "__main__":
+    # Use our centralized argument parsing function for standalone execution
+    args = parse_arguments()
+    
+    print(f"Running in standalone mode with arguments: {args}")
+    
+    # Initialize mlflow for tracking only if not in local mode
+    if not args.local:
+        try:
+            mlflow.start_run()
+            logger.info("MLflow run started")
+        except Exception as e:
+            logger.warning(f"Could not start MLflow run: {str(e)}")
+    else:
+        logger.info("Local mode: Skipping MLflow initialization")
+    
+    models = load_models(args)
+    
+    # Set up CosmosDB client if not in local mode
+    cosmos_client = None
+    if not args.local:
+        if args.cosmos_db:
+            try:
+                from azure.cosmos import CosmosClient
+                cosmos_client = CosmosClient.from_connection_string(args.cosmos_db)
+                logger.info("Connected to CosmosDB using provided connection string")
+            except Exception as e:
+                logger.error(f"Failed to connect to CosmosDB: {str(e)}")
+        else:
+            try:
+                cosmos_client = get_cosmosdb_client(None, args.key_vault_url)
+                if cosmos_client:
+                    logger.info("Connected to CosmosDB using Key Vault")
+                else:
+                    logger.warning("Failed to connect to CosmosDB using Key Vault")
+            except Exception as e:
+                logger.error(f"Failed to connect to CosmosDB via Key Vault: {str(e)}")
+    
+    # Get list of processed images
+    processed_ids = []
+    if args.mode == "auto" and not args.local and cosmos_client:
+        processed_ids = get_processed_ids(
+            cosmos_client, 
+            batch_id=args.batch_id,
+            database_name=args.cosmos_db_name,
+            container_name=args.cosmos_container_name
+        )
+        logger.info(f"Found {len(processed_ids)} already processed images")
+    
+    # Run the main process
+    results = run_parallel_inference(args, models, processed_ids, cosmos_client)
+    logger.info(f"Processed {len(results)} images")
+    
+    # Save results to output
+    try:
+        with open(os.path.join(args.output_data, "results.json"), 'w') as f:
+            json.dump(results, f, indent=2)
+        logger.info(f"Successfully saved results to {os.path.join(args.output_data, 'results.json')}")
+    except Exception as e:
+        logger.error(f"Failed to save results: {str(e)}")
+    print(f"Running in standalone mode with arguments: {args}")
+    
+    # Initialize mlflow for tracking only if not in local mode
+    if not args.local:
+        try:
+            mlflow.start_run()
+            logger.info("MLflow run started")
+        except Exception as e:
+            logger.warning(f"Could not start MLflow run: {str(e)}")
+    else:
+        logger.info("Local mode: Skipping MLflow initialization")
+    
+    models = load_models(args)
+    
+    # Set up CosmosDB client if not in local mode
+    cosmos_client = None
+    if not args.local:
+        if args.cosmos_db:
+            try:
+                from azure.cosmos import CosmosClient
+                cosmos_client = CosmosClient.from_connection_string(args.cosmos_db)
+                logger.info("Connected to CosmosDB using provided connection string")
+            except Exception as e:
+                logger.error(f"Failed to connect to CosmosDB: {str(e)}")
+        else:
+            try:
+                cosmos_client = get_cosmosdb_client(None, args.key_vault_url)
+                if cosmos_client:
+                    logger.info("Connected to CosmosDB using Key Vault")
+                else:
+                    logger.warning("Failed to connect to CosmosDB using Key Vault")
+            except Exception as e:
+                logger.error(f"Failed to connect to CosmosDB via Key Vault: {str(e)}")
+    
+    # Get list of processed images
+    processed_ids = []
+    if args.mode == "auto" and not args.local and cosmos_client:
+        processed_ids = get_processed_ids(
+            cosmos_client, 
+            batch_id=args.batch_id,
+            database_name=args.cosmos_db_name,
+            container_name=args.cosmos_container_name
+        )
+        logger.info(f"Found {len(processed_ids)} already processed images")
+    
+    # Run the main process
+    results = run_parallel_inference(args, models, processed_ids, cosmos_client)
+    logger.info(f"Processed {len(results)} images")
+    
+    # Save results to output
+    try:
+        with open(os.path.join(args.output_data, "results.json"), 'w') as f:
+            json.dump(results, f, indent=2)
+        logger.info(f"Successfully saved results to {os.path.join(args.output_data, 'results.json')}")
+    except Exception as e:
+        logger.error(f"Failed to save results: {str(e)}")
