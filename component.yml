@@ -120,7 +120,7 @@ outputs:
     type: uri_folder
     description: Output folder for results
 
-code: ./src
+code: .
     
 mini_batch_size: "30"
 resources:
@@ -135,7 +135,7 @@ retry_settings:
 
 task:
   type: run_function
-  entry_script: component.py
+  entry_script: src/component.py
   environment:
     conda_file: ./environment.yml
     image: mcr.microsoft.com/azureml/openmpi4.1.0-ubuntu20.04
