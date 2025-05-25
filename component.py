@@ -163,13 +163,13 @@ except ImportError as e:
         ImageDraw = MockImageDraw()
 
 # Import utils - make sure file exists first
-utils_path = os.path.join(os.path.dirname(__file__), "utils.py")
+utils_path = os.path.join(os.path.dirname(__file__), "src", "utils.py")
 if not os.path.exists(utils_path):
     logger.error(f"Utils module not found at {utils_path}")
     raise ImportError(f"Utils module not found at {utils_path}")
 
 try:
-    from utils import sliding_window, log_inference_metrics, update_cosmos_db, \
+    from src.utils import sliding_window, log_inference_metrics, update_cosmos_db, \
         get_cosmosdb_client, get_processed_ids, \
         run_generic_model_predict, \
         create_coordinate_pairs, multiply_coordinates, save_local_results, \

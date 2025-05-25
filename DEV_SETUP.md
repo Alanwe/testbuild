@@ -155,10 +155,11 @@ The development environment follows this structure:
     └── Dev-Model/         # Dummy model for development
 ├── requirements.txt       # Pip requirements for non-conda setup
 ├── setup_dev.sh           # Setup script for development environment
-├── utils.py               # Utility functions
 ├── data/                  # Input/output data directory
 │   ├── images/            # Input images
 │   └── output/            # Output results
+├── src/                   # Source code directory
+│   └── utils.py           # Utility functions
 └── models/                # MLflow model directories
     └── Dev-Model/         # Dummy model for development
 ```
