@@ -306,16 +306,28 @@ def main():
     try:
         # Get the pipeline YAML file path
         pipeline_yaml_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pipeline.yml")
-        print(f"Loading pipeline YAML from: {pipeline_yaml_path}")
+        azureml_job_yaml_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "azureml-job.yml")
         
-        if not os.path.exists(pipeline_yaml_path):
-            print(f"Error: Pipeline YAML file not found at {pipeline_yaml_path}")
+        # Check which file to use - first try pipeline.yml as default, then check if azureml-job.yml exists
+        yaml_path = pipeline_yaml_path
+        if "GITHUB_WORKFLOW" in os.environ and "submit-azureml-job" in os.environ.get("GITHUB_WORKFLOW", ""):
+            # Use azureml-job.yml for submit-azureml-job workflow if available
+            if os.path.exists(azureml_job_yaml_path):
+                yaml_path = azureml_job_yaml_path
+                print(f"Using azureml-job.yml for submit-azureml-job workflow")
+            else:
+                print(f"Warning: azureml-job.yml not found, falling back to pipeline.yml")
+        
+        print(f"Loading pipeline YAML from: {yaml_path}")
+        
+        if not os.path.exists(yaml_path):
+            print(f"Error: YAML file not found at {yaml_path}")
             return 1
         
         # Validate the YAML using Azure CLI if available
         if os.system("az --version > /dev/null 2>&1") == 0:
             if install_and_verify_azureml_cli():
-                is_valid, validation_result = validate_pipeline_yaml(pipeline_yaml_path)
+                is_valid, validation_result = validate_pipeline_yaml(yaml_path)
                 if not is_valid:
                     print("WARNING: Pipeline YAML validation failed. This may cause job submission to fail.")
                     print("Attempting to continue with submission anyway...")
@@ -323,13 +335,13 @@ def main():
         # Load the pipeline job YAML
         try:
             # First validate the YAML file content
-            with open(pipeline_yaml_path, 'r') as f:
+            with open(yaml_path, 'r') as f:
                 yaml_content = f.read()
                 print(f"YAML file size: {len(yaml_content)} bytes")
                 print(f"YAML file first line: {yaml_content.split('\\n')[0]}")
             
             # Load the job definition from YAML
-            pipeline_job = load_job(pipeline_yaml_path)
+            pipeline_job = load_job(yaml_path)
             
             # Print some info about the loaded job
             print(f"Successfully loaded pipeline job from YAML.")
