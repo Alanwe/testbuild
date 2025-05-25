@@ -78,7 +78,9 @@ jobs:
           
       - name: Submit AML Pipeline Job
         id: submit_job
-        run: python run_aml_job.py
+        run: |
+          echo "Submitting Azure ML pipeline job..."
+          python run_aml_job.py
         
       - name: Display Job Information
         run: |

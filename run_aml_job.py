@@ -10,7 +10,7 @@ import os
 import sys
 from datetime import datetime
 from azure.identity import DefaultAzureCredential, ClientSecretCredential
-from azure.ai.ml import MLClient, Input
+from azure.ai.ml import MLClient, Input, load_job
 
 def main():
     """Main function to submit pipeline job with parameters from the issue"""
@@ -47,14 +47,15 @@ def main():
     # Constants from issue
     input_dataset = "azureml:facade-inference-image-batches:1"
     model1 = "azureml:Glazing-Defects:1"
-    cosmos_db = "https://facadestudio.documents.azure.com:443/;AccountKey=******;"
-    key_vault_url = "https://facade-keyvault.vault.azure.net/"
-    cosmos_db_name = "FacadeDB"
-    cosmos_container_name = "Images"
-    compute_target = "cpu-cluster2"
+    cosmos_db = os.environ.get("COSMOS_DB", "https://facadestudio.documents.azure.com:443/;AccountKey=******;")
+    key_vault_url = os.environ.get("KEY_VAULT_URL", "https://facade-keyvault.vault.azure.net/")
+    cosmos_db_name = os.environ.get("COSMOS_DB_NAME", "FacadeDB")
+    cosmos_container_name = os.environ.get("COSMOS_CONTAINER_NAME", "Images")
+    compute_target = os.environ.get("COMPUTE_TARGET", "cpu-cluster2")
     
     print(f"Connecting to Azure ML workspace: {workspace_name}")
     print(f"Resource Group: {resource_group}")
+    print(f"Subscription ID: {subscription_id[:8]}...") # Show only first 8 chars for security
     print(f"Region: West Europe")
     
     try:
@@ -76,6 +77,15 @@ def main():
         print(f"Successfully connected to workspace: {ml_client.workspace_name}")
     except Exception as e:
         print(f"Error connecting to Azure ML workspace: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        
+        # Check if the error is related to authentication
+        error_msg = str(e).lower()
+        if "authentication" in error_msg or "credential" in error_msg:
+            print("\nAuthentication error. Please check your Azure credentials.")
+            print("Make sure AZURE_SUBSCRIPTION_ID, AZURE_TENANT_ID, AZURE_CLIENT_ID, and AZURE_CLIENT_SECRET are set correctly.")
+        
         return 1
     
     # Create a unique job name
@@ -95,56 +105,58 @@ def main():
     print(f"Model1 Confidence: {model1_confidence}")
     
     try:
-        # Create the job using the pipeline.yml
-        pipeline_job = ml_client.jobs.create_or_update(
-            job={
-                "file": "pipeline.yml",
-                "display_name": "FacadeAI Pipeline Test Job",
-                "description": "FacadeAI Pipeline Job submitted from GitHub Actions",
-                "settings": {
-                    "default_compute": compute_target
-                },
-                "jobs": {
-                    "facade_inference": {
-                        "inputs": {
-                            "input_ds": input_dataset,
-                            "batch_id": batch_id,
-                            "mode": mode,
-                            "window_size": window_size,
-                            "overlap": overlap,
-                            "confidence": confidence,
-                            "model1": model1,
-                            "model1_confidence": model1_confidence,
-                            "model2_confidence": model2_confidence,
-                            "model3_confidence": model3_confidence,
-                            "model4_confidence": model4_confidence,
-                            "model5_confidence": model5_confidence,
-                            "model6_confidence": model6_confidence,
-                            "model7_confidence": model7_confidence,
-                            "model8_confidence": model8_confidence,
-                            "cosmos_db": cosmos_db,
-                            "key_vault_url": key_vault_url,
-                            "cosmos_db_name": cosmos_db_name,
-                            "cosmos_container_name": cosmos_container_name,
-                            "local": False,
-                            "trace": False,
-                        },
-                        "compute": compute_target,
-                    }
-                }
-            },
-            name=job_name
-        )
+        # Get the pipeline YAML file path
+        pipeline_yaml_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pipeline.yml")
+        print(f"Loading pipeline YAML from: {pipeline_yaml_path}")
         
-        print(f"\nJob submitted successfully!")
-        print(f"Job Name: {pipeline_job.name}")
-        print(f"Job ID: {pipeline_job.id}")
+        if not os.path.exists(pipeline_yaml_path):
+            print(f"Error: Pipeline YAML file not found at {pipeline_yaml_path}")
+            return 1
         
-        # Don't wait for the job to complete as per requirement
-        print("\nJob has been submitted. Not waiting for completion.")
-        return 0
+        # Load the pipeline job YAML
+        try:
+            pipeline_job = load_job(pipeline_yaml_path)
+            
+            # Update pipeline job properties
+            pipeline_job.display_name = "FacadeAI Pipeline Test Job"
+            pipeline_job.description = "FacadeAI Pipeline Job submitted from GitHub Actions"
+            pipeline_job.name = job_name
+            
+            # Update inputs
+            pipeline_job.inputs.batch_id = batch_id
+            pipeline_job.inputs.input_dataset = input_dataset
+            pipeline_job.inputs.main_model = model1
+            pipeline_job.inputs.processing_mode = mode
+            pipeline_job.inputs.window_size = window_size
+            pipeline_job.inputs.overlap = overlap
+            pipeline_job.inputs.confidence_threshold = confidence
+            
+            # Update compute target
+            pipeline_job.settings.default_compute = compute_target
+            pipeline_job.jobs["facade_inference"].compute = f"azureml:{compute_target}"
+            
+            # Submit the job
+            print("\nSubmitting pipeline job...")
+            submitted_job = ml_client.jobs.create_or_update(pipeline_job)
+            
+            print(f"\nJob submitted successfully!")
+            print(f"Job Name: {submitted_job.name}")
+            print(f"Job ID: {submitted_job.id}")
+            
+            # Don't wait for the job to complete as per requirement
+            print("\nJob has been submitted. Not waiting for completion.")
+            return 0
+            
+        except Exception as e:
+            print(f"Error preparing pipeline job: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return 1
+            
     except Exception as e:
         print(f"Error submitting job: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return 1
 
 if __name__ == "__main__":
