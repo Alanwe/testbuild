@@ -1,0 +1,89 @@
+$schema: https://azuremlschemas.azureedge.net/latest/pipelineJob.schema.json
+name: facade-defect-detection-pipeline
+display_name: Facade Defect Detection Pipeline
+description: Pipeline for detecting defects in facade images using AI models
+version: 1
+
+# Pipeline-level inputs
+inputs:
+  batch_id:
+    type: string
+    description: Batch ID for the images to process
+  input_dataset:
+    type: uri_folder
+    description: Input dataset containing facade images
+    default: azureml://datastores/workspaceblobstore/paths/facades/images/
+  output_path:
+    type: string
+    description: Output path for results
+    default: azureml://datastores/workspaceblobstore/paths/facades/results/
+  # Model inputs
+  main_model:
+    type: mlflow_model
+    description: Primary model for defect detection (required)
+  second_model:
+    type: mlflow_model
+    description: Secondary model for defect detection (optional)
+    optional: true
+  # Processing parameters
+  window_size:
+    type: integer
+    default: 512
+    description: Size of sliding window for processing
+  overlap:
+    type: integer
+    default: 64
+    description: Overlap between sliding windows
+  confidence_threshold:
+    type: integer
+    default: 50
+    description: Default confidence threshold for detections
+  processing_mode:
+    type: string
+    default: "auto"
+    description: Processing mode (auto or force)
+
+# Pipeline-level outputs
+outputs:
+  pipeline_results:
+    type: uri_folder
+    description: Output folder containing all detection results
+
+# Pipeline jobs
+jobs:
+  facade_inference:
+    type: command
+    component: ./component.yml
+    compute: azureml:gpu-cluster
+    resources:
+      instance_count: 2
+    inputs:
+      input_ds: ${{parent.inputs.input_dataset}}
+      batch_id: ${{parent.inputs.batch_id}}
+      mode: ${{parent.inputs.processing_mode}}
+      window_size: ${{parent.inputs.window_size}}
+      overlap: ${{parent.inputs.overlap}}
+      confidence: ${{parent.inputs.confidence_threshold}}
+      model1: ${{parent.inputs.main_model}}
+      model2: ${{parent.inputs.second_model}}
+      model1_confidence: ${{parent.inputs.confidence_threshold}}
+      model2_confidence: ${{parent.inputs.confidence_threshold}}
+      # Default values for optional CosmosDB parameters
+      cosmos_db_name: "FacadeDB"
+      cosmos_container_name: "Images"
+      key_vault_url: "https://facade-keyvault.vault.azure.net/"
+      # Disable local mode and enable tracing
+      local: False
+      trace: True
+    outputs:
+      output_data: ${{parent.outputs.pipeline_results}}
+
+# Settings for experiment
+settings:
+  default_compute: azureml:cpu-cluster
+  continue_on_step_failure: true
+  description: "FacadeAI defect detection pipeline that processes facade images and detects defects using AI models."
+  tags:
+    version: "1.0.0"
+    project: "FacadeAI"
+    purpose: "defect-detection"
