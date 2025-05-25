@@ -1,5 +1,9 @@
 name: Submit AzureML Job
 
+# This workflow submits a job to Azure Machine Learning (AzureML)
+# It authenticates using a service principal stored in AZURE_CREDENTIALS secret
+# and submits the job defined in azureml-job.yml
+
 # Trigger on push to main branch and manual workflow dispatch
 on:
   push:
