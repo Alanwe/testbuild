@@ -1,0 +1,119 @@
+name: Run AzureML Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      batch_id:
+        description: 'Batch ID for processing'
+        default: '3'
+        required: true
+      mode:
+        description: 'Processing mode (auto/force)'
+        default: 'auto'
+        required: true
+      window_size:
+        description: 'Window size for sliding window'
+        default: '512'
+        required: true
+      overlap:
+        description: 'Overlap between windows'
+        default: '64'
+        required: true
+      confidence:
+        description: 'Default confidence threshold'
+        default: '30'
+        required: true
+      model1_confidence:
+        description: 'Confidence threshold for model 1'
+        default: '50'
+        required: false
+
+jobs:
+  submit_aml_job:
+    runs-on: ubuntu-latest
+    name: Submit AzureML Pipeline Job
+    
+    env:
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+      AZURE_RESOURCE_GROUP: "Facade-MLRG"
+      AZURE_WORKSPACE_NAME: "Facade-AML"
+      BATCH_ID: ${{ github.event.inputs.batch_id }}
+      MODE: ${{ github.event.inputs.mode }}
+      WINDOW_SIZE: ${{ github.event.inputs.window_size }}
+      OVERLAP: ${{ github.event.inputs.overlap }}
+      CONFIDENCE: ${{ github.event.inputs.confidence }}
+      MODEL1_CONFIDENCE: ${{ github.event.inputs.model1_confidence || github.event.inputs.confidence }}
+      MODEL2_CONFIDENCE: "50"
+      MODEL3_CONFIDENCE: "50" 
+      MODEL4_CONFIDENCE: "50"
+      MODEL5_CONFIDENCE: "50"
+      MODEL6_CONFIDENCE: "50"
+      MODEL7_CONFIDENCE: "50"
+      MODEL8_CONFIDENCE: "50"
+      COMPUTE_TARGET: "cpu-cluster2"
+      COSMOS_DB: "https://facadestudio.documents.azure.com:443/;AccountKey=******;"
+      KEY_VAULT_URL: "https://facade-keyvault.vault.azure.net/"
+      COSMOS_DB_NAME: "FacadeDB"
+      COSMOS_CONTAINER_NAME: "Images"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v3
+        
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+          
+      - name: Install Azure ML SDK and dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install azure-ai-ml azure-identity azure-core
+          
+      - name: Install Azure CLI
+        run: |
+          if ! command -v az &> /dev/null; then
+            echo "Installing Azure CLI..."
+            curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+          fi
+          
+          echo "Installing Azure CLI ML extension..."
+          az extension add --name ml --yes || true
+          
+      - name: Make script executable
+        run: chmod +x run_aml_job.py
+          
+      - name: Submit AML Pipeline Job
+        id: submit_job
+        run: |
+          echo "Submitting Azure ML pipeline job..."
+          set +e  # Don't exit on error
+          python run_aml_job.py
+          JOB_RESULT=$?
+          
+          if [ $JOB_RESULT -ne 0 ]; then
+            echo "::warning::Python job submission failed with exit code $JOB_RESULT"
+            echo "Attempting to submit via Bash script instead..."
+            
+            chmod +x submit_aml_job.sh
+            ./submit_aml_job.sh
+            BASH_RESULT=$?
+            
+            if [ $BASH_RESULT -ne 0 ]; then
+              echo "::error::Both Python and Bash submission methods failed."
+              exit 1
+            fi
+          fi
+        
+      - name: Display Job Information
+        run: |
+          echo "AzureML Pipeline Job submission completed"
+          echo "Workspace: Facade-AML"
+          echo "Resource Group: Facade-MLRG"
+          echo "Region: West Europe"
+          echo ""
+          echo "To monitor the job, go to the Azure ML Studio:"
+          echo "https://ml.azure.com/runs"
