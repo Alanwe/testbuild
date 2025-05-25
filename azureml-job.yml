@@ -14,7 +14,7 @@ inputs:
 
 # Required parameters for CommandJob schema
 command: >-
-  python component.py 
+  python src/component.py 
   --batch_id ${{inputs.batch_id}} 
   --input_ds ${{inputs.input_dataset}} 
   --model ${{inputs.model}}

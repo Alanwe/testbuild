@@ -121,8 +121,7 @@ outputs:
     description: Output folder for results
 
 code: ./src
-
-
+    
 mini_batch_size: "30"
 resources:
   instance_count: 2
@@ -136,7 +135,6 @@ retry_settings:
 
 task:
   type: run_function
-  code: src
   entry_script: component.py
   environment:
     conda_file: ./environment.yml
