@@ -9,7 +9,6 @@ inputs:
     type: string
   input_dataset:
     type: uri_folder
-    default: azureml://datastores/workspaceblobstore/paths/facades/images/
   model:
     type: mlflow_model
 
