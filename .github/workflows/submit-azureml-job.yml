@@ -98,10 +98,9 @@ jobs:
           JOB_NAME="github-workflow-${TIMESTAMP}"
           
           # Set parameters for the job
-          PARAMETERS=""
-          if [ -n "${{ env.BATCH_ID }}" ]; then
-            PARAMETERS="--set inputs.batch_id=${{ env.BATCH_ID }}"
-          fi
+          PARAMETERS="--set inputs.batch_id=${{ env.BATCH_ID }}"
+          # Add model parameter, required by the command job schema
+          PARAMETERS="$PARAMETERS --set inputs.model=azureml:Glazing-Defects:1"
           
           # Submit the job using Azure CLI
           set +e  # Don't exit on error
