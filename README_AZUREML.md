@@ -28,8 +28,10 @@ The FacadeAI AzureML integration consists of these key files:
 
 - `component.yml` - Defines the FacadeAI inference component for AzureML
 - `pipeline.yml` - Defines a pipeline that uses the FacadeAI component
+- `azureml-job.yml` - Defines a command job that can be submitted directly via GitHub Actions
 - `submit_job.sh` - Script for submitting pipeline jobs
 - `collect_outputs.sh` - Script for downloading results from completed jobs
+- `.github/workflows/submit-azureml-job.yml` - GitHub workflow for submitting jobs via GitHub Actions
 
 ## Running a Pipeline
 
@@ -91,3 +93,17 @@ az ml job create -f tests/verify_setup.yml
 
 - [Azure ML Documentation](https://docs.microsoft.com/en-us/azure/machine-learning/)
 - [FacadeAI Development Guide](DEV_SETUP.md)
+
+## GitHub Actions Integration
+
+FacadeAI can be integrated with GitHub Actions for automated job submission:
+
+1. The `.github/workflows/submit-azureml-job.yml` workflow automatically submits jobs to AzureML 
+   using the `azureml-job.yml` definition.
+
+2. Required parameters for `azureml-job.yml`:
+   - `batch_id` - ID of the batch to process
+   - `model` - MLflow model reference (e.g., "azureml:Glazing-Defects:1")
+   - `input_dataset` - URI folder path (e.g., "azureml:facade-inference-image-batches:1")
+
+3. You can trigger the workflow manually from the GitHub Actions tab with custom parameters.
