@@ -1,0 +1,97 @@
+name: Submit AzureML Job
+
+# Trigger on push to main branch and manual workflow dispatch
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  submit-azureml-job:
+    runs-on: ubuntu-latest
+    name: Submit AzureML Job
+
+    # Define environment variables that can be easily edited
+    env:
+      AZURE_RESOURCE_GROUP: "Facade-MLRG"  # Edit this value as needed
+      AZURE_WORKSPACE_NAME: "Facade-AML"   # Edit this value as needed
+
+    steps:
+      # Check out the repository code
+      - name: Check out repository
+        uses: actions/checkout@v3
+        
+      # Set up Python environment
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+          
+      # Install Azure CLI if not already installed
+      - name: Install Azure CLI
+        run: |
+          if ! command -v az &> /dev/null; then
+            echo "Installing Azure CLI..."
+            curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+          else
+            echo "Azure CLI already installed"
+          fi
+          
+      # Install AzureML CLI extension if not present
+      - name: Install AzureML CLI extension
+        run: |
+          echo "Checking for AzureML CLI extension..."
+          if ! az extension list --query "[?name=='ml'].version" -o tsv | grep -q "."; then
+            echo "Installing AzureML CLI extension..."
+            az extension add --name ml --yes
+          else
+            echo "AzureML CLI extension already installed"
+          fi
+          
+      # Login to Azure using service principal credentials
+      - name: Login to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          
+      # Verify Azure ML workspace
+      - name: Verify AzureML workspace
+        run: |
+          echo "Verifying AzureML workspace..."
+          az ml workspace show --resource-group ${{ env.AZURE_RESOURCE_GROUP }} --name ${{ env.AZURE_WORKSPACE_NAME }}
+          
+      # Submit AzureML job
+      - name: Submit AzureML job
+        id: submit_job
+        run: |
+          echo "Submitting AzureML job from definition in azureml-job.yml..."
+          
+          # Generate a timestamp-based job name
+          TIMESTAMP=$(date +"%Y%m%d%H%M%S")
+          JOB_NAME="github-workflow-${TIMESTAMP}"
+          
+          # Submit the job using Azure CLI
+          JOB_OUTPUT=$(az ml job create \
+            --file azureml-job.yml \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --workspace-name ${{ env.AZURE_WORKSPACE_NAME }} \
+            --name "${JOB_NAME}" \
+            --output json)
+            
+          # Extract and store job details
+          JOB_ID=$(echo "$JOB_OUTPUT" | jq -r '.name')
+          echo "JOB_ID=$JOB_ID" >> $GITHUB_ENV
+          
+          echo "Job submitted successfully with ID: $JOB_ID"
+          
+      # Display information about the submitted job
+      - name: Display job information
+        run: |
+          echo "AzureML Job submitted successfully"
+          echo "==================================="
+          echo "Job ID: ${{ env.JOB_ID }}"
+          echo "Workspace: ${{ env.AZURE_WORKSPACE_NAME }}"
+          echo "Resource Group: ${{ env.AZURE_RESOURCE_GROUP }}"
+          echo ""
+          echo "Monitor this job at: https://ml.azure.com/runs/${{ env.JOB_ID }}?wsid=/subscriptions/<subscription-id>/resourceGroups/${{ env.AZURE_RESOURCE_GROUP }}/providers/Microsoft.MachineLearningServices/workspaces/${{ env.AZURE_WORKSPACE_NAME }}"
