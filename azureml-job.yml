@@ -1,9 +1,9 @@
-$schema: https://azuremlschemas.azureedge.net/latest/commandJob.schema.json
+$schema: https://azuremlschemas.azureedge.net/latest/pipelineJob.schema.json
 name: facade-defect-detection
 display_name: Facade Defect Detection
-description: Command job for detecting defects in facade images using AI models
+description: Pipeline job for detecting defects in facade images using the parallel component
 
-# Command job inputs
+# Pipeline job inputs
 inputs:
   batch_id:
     type: string
@@ -12,30 +12,31 @@ inputs:
   model:
     type: mlflow_model
 
-# Required parameters for CommandJob schema
-command: >-
-  python src/component.py 
-  --batch_id ${{inputs.batch_id}} 
-  --input_ds ${{inputs.input_dataset}} 
-  --model ${{inputs.model}}
-  --window_size 512
-  --overlap 64
-  --confidence 50
-  --mode auto
-  --local False
-  --output_dir outputs
-
-# Define compute for the job
-compute: azureml:cpu-cluster2
-resources:
-  instance_count: 1
-
-# Required environment specification
-environment: 
-  image: mcr.microsoft.com/azureml/openmpi4.1.0-ubuntu20.04
-  conda_file: ./environment.yml
-
-# Output directories
+# Pipeline job outputs
 outputs:
   job_output:
     type: uri_folder
+
+# Pipeline jobs using the component
+jobs:
+  facade_inference:
+    type: parallel
+    component: ./component.yml
+    compute: azureml:cpu-cluster2
+    resources:
+      instance_count: 1
+    inputs:
+      input_ds: ${{parent.inputs.input_dataset}}
+      batch_id: ${{parent.inputs.batch_id}}
+      model1: ${{parent.inputs.model}}
+      window_size: 512
+      overlap: 64
+      confidence: 50
+      mode: "auto"
+      local: False
+    outputs:
+      output_data: ${{parent.outputs.job_output}}
+
+# Settings
+settings:
+  default_compute: azureml:cpu-cluster2

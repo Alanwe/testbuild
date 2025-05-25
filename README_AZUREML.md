@@ -28,7 +28,7 @@ The FacadeAI AzureML integration consists of these key files:
 
 - `component.yml` - Defines the FacadeAI inference component for AzureML
 - `pipeline.yml` - Defines a pipeline that uses the FacadeAI component
-- `azureml-job.yml` - Defines a command job that can be submitted directly via GitHub Actions
+- `azureml-job.yml` - Defines a pipeline job using the FacadeAI component that can be submitted directly via GitHub Actions
 - `submit_job.sh` - Script for submitting pipeline jobs
 - `collect_outputs.sh` - Script for downloading results from completed jobs
 - `.github/workflows/submit-azureml-job.yml` - GitHub workflow for submitting jobs via GitHub Actions
