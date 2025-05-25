@@ -25,15 +25,11 @@ The repository uses two different methods for authentication:
    - name: Login to Azure
      uses: azure/login@v1
      with:
-       client-id: ${{ secrets.AZURE_CLIENT_ID }}
-       tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-       subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-       client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+       creds: '{"clientId":"${{ secrets.AZURE_CLIENT_ID }}", "clientSecret":"${{ secrets.AZURE_CLIENT_SECRET }}", "subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}", "tenantId":"${{ secrets.AZURE_TENANT_ID }}"}'
        enable-AzPSSession: false
        environment: azurecloud
        allow-no-subscriptions: false
        audience: api://AzureADTokenExchange
-       auth-type: SERVICE_PRINCIPAL
    ```
 
 2. **Environment Variables**: Used in the `run-aml-pipeline.yml` workflow. This workflow passes the credentials as environment variables to the Python script:
