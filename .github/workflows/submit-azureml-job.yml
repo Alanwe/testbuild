@@ -6,6 +6,22 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      workspace_name:
+        description: 'Azure ML Workspace Name'
+        required: false
+        default: 'Facade-AML'
+        type: string
+      resource_group:
+        description: 'Azure Resource Group'
+        required: false
+        default: 'Facade-MLRG'
+        type: string
+      batch_id:
+        description: 'Batch ID for processing'
+        required: false
+        default: '3'
+        type: string
 
 jobs:
   submit-azureml-job:
@@ -14,8 +30,10 @@ jobs:
 
     # Define environment variables that can be easily edited
     env:
-      AZURE_RESOURCE_GROUP: "Facade-MLRG"  # Edit this value as needed
-      AZURE_WORKSPACE_NAME: "Facade-AML"   # Edit this value as needed
+      # Use inputs from workflow_dispatch if provided, otherwise use defaults
+      AZURE_RESOURCE_GROUP: ${{ github.event.inputs.resource_group || 'Facade-MLRG' }}
+      AZURE_WORKSPACE_NAME: ${{ github.event.inputs.workspace_name || 'Facade-AML' }}
+      BATCH_ID: ${{ github.event.inputs.batch_id || '3' }}
 
     steps:
       # Check out the repository code
@@ -71,27 +89,64 @@ jobs:
           TIMESTAMP=$(date +"%Y%m%d%H%M%S")
           JOB_NAME="github-workflow-${TIMESTAMP}"
           
+          # Set parameters for the job
+          PARAMETERS=""
+          if [ -n "${{ env.BATCH_ID }}" ]; then
+            PARAMETERS="--set inputs.batch_id=${{ env.BATCH_ID }}"
+          fi
+          
           # Submit the job using Azure CLI
+          set +e  # Don't exit on error
           JOB_OUTPUT=$(az ml job create \
             --file azureml-job.yml \
             --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
             --workspace-name ${{ env.AZURE_WORKSPACE_NAME }} \
             --name "${JOB_NAME}" \
+            ${PARAMETERS} \
             --output json)
+          JOB_SUBMIT_EXIT_CODE=$?
+          set -e  # Resume exit on error
+          
+          if [ $JOB_SUBMIT_EXIT_CODE -ne 0 ]; then
+            echo "::error::Failed to submit AzureML job. Error: $JOB_OUTPUT"
+            exit 1
+          fi
             
           # Extract and store job details
           JOB_ID=$(echo "$JOB_OUTPUT" | jq -r '.name')
+          if [ -z "$JOB_ID" ] || [ "$JOB_ID" == "null" ]; then
+            echo "::error::Failed to extract job ID from output: $JOB_OUTPUT"
+            exit 1
+          fi
+          
           echo "JOB_ID=$JOB_ID" >> $GITHUB_ENV
+          echo "JOB_NAME=$JOB_NAME" >> $GITHUB_ENV
           
           echo "Job submitted successfully with ID: $JOB_ID"
           
       # Display information about the submitted job
       - name: Display job information
+        if: success()
         run: |
           echo "AzureML Job submitted successfully"
           echo "==================================="
           echo "Job ID: ${{ env.JOB_ID }}"
+          echo "Job Name: ${{ env.JOB_NAME }}"
           echo "Workspace: ${{ env.AZURE_WORKSPACE_NAME }}"
           echo "Resource Group: ${{ env.AZURE_RESOURCE_GROUP }}"
           echo ""
           echo "Monitor this job at: https://ml.azure.com/runs/${{ env.JOB_ID }}?wsid=/subscriptions/<subscription-id>/resourceGroups/${{ env.AZURE_RESOURCE_GROUP }}/providers/Microsoft.MachineLearningServices/workspaces/${{ env.AZURE_WORKSPACE_NAME }}"
+          
+      # Check initial job status
+      - name: Check job status
+        if: success()
+        run: |
+          echo "Checking initial job status..."
+          JOB_STATUS=$(az ml job show --name ${{ env.JOB_ID }} --resource-group ${{ env.AZURE_RESOURCE_GROUP }} --workspace-name ${{ env.AZURE_WORKSPACE_NAME }} --query status -o tsv)
+          echo "Current job status: $JOB_STATUS"
+          
+          if [[ "$JOB_STATUS" == "Failed" ]]; then
+            echo "::warning::Job immediately failed. Check the Azure ML portal for details."
+          else
+            echo "Job is being processed by Azure ML"
+          fi
