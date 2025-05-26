@@ -1,6 +1,6 @@
-$schema: https://azuremlschemas.azureedge.net/latest/parallelComponent.schema.json
+$schema: https://azuremlschemas.azureedge.net/latest/commandComponent.schema.json
 name: parallel_facade_inference
-type: parallel
+type: command
 description: Parallel processing of facade images for AI-based defect detection using sliding window technique
 display_name: Parallel Facade AI Inference
 version: 4.0.8
@@ -121,55 +121,45 @@ outputs:
     description: Output folder for results
 
 code: .
-    
-mini_batch_size: "30"
-resources:
-  instance_count: 2
-mini_batch_error_threshold: 5
-logging_level: "DEBUG"
-input_data: ${{inputs.input_ds}}
-max_concurrency_per_instance: 2
-retry_settings:
-  max_retries: 2
-  timeout: 60
 
-task:
-  type: run_function
-  entry_script: src/component.py
-  environment:
-    conda_file: ./environment.yml
-    image: mcr.microsoft.com/azureml/openmpi4.1.0-ubuntu20.04
+environment:
+  conda_file: ./environment.yml
+  image: mcr.microsoft.com/azureml/openmpi4.1.0-ubuntu20.04
   environment_variables:
     PYTHONPATH: "."
     PYTHONUNBUFFERED: "1"
 
-  program_arguments: >-
-    --input_ds ${{inputs.input_ds}} 
-    --output_data ${{outputs.output_data}} 
-    --batch_id ${{inputs.batch_id}} 
-    --mode ${{inputs.mode}} 
-    --window_size ${{inputs.window_size}} 
-    --overlap ${{inputs.overlap}} 
-    --confidence ${{inputs.confidence}} 
-    --model1 ${{inputs.model1}} 
-    --model2 $[[inputs.model2]] 
-    --model3 $[[inputs.model3]] 
-    --model4 $[[inputs.model4]] 
-    --model5 $[[inputs.model5]] 
-    --model6 $[[inputs.model6]] 
-    --model7 $[[inputs.model7]] 
-    --model8 $[[inputs.model8]] 
-    --model1_confidence ${{inputs.model1_confidence}} 
-    --model2_confidence ${{inputs.model2_confidence}} 
-    --model3_confidence ${{inputs.model3_confidence}} 
-    --model4_confidence ${{inputs.model4_confidence}} 
-    --model5_confidence ${{inputs.model5_confidence}} 
-    --model6_confidence ${{inputs.model6_confidence}} 
-    --model7_confidence ${{inputs.model7_confidence}} 
-    --model8_confidence ${{inputs.model8_confidence}} 
-    --cosmos_db $[[inputs.cosmos_db]] 
-    --key_vault_url "${{inputs.key_vault_url}}" 
-    --cosmos_db_name "${{inputs.cosmos_db_name}}" 
-    --cosmos_container_name "${{inputs.cosmos_container_name}}" 
-    --local ${{inputs.local}} 
-    --trace ${{inputs.trace}}
+resources:
+  instance_count: 2
+
+command: >-
+  python src/component.py 
+  --input_ds ${{inputs.input_ds}} 
+  --output_data ${{outputs.output_data}} 
+  --batch_id ${{inputs.batch_id}} 
+  --mode ${{inputs.mode}} 
+  --window_size ${{inputs.window_size}} 
+  --overlap ${{inputs.overlap}} 
+  --confidence ${{inputs.confidence}} 
+  --model1 ${{inputs.model1}} 
+  --model2 $[[inputs.model2]] 
+  --model3 $[[inputs.model3]] 
+  --model4 $[[inputs.model4]] 
+  --model5 $[[inputs.model5]] 
+  --model6 $[[inputs.model6]] 
+  --model7 $[[inputs.model7]] 
+  --model8 $[[inputs.model8]] 
+  --model1_confidence ${{inputs.model1_confidence}} 
+  --model2_confidence ${{inputs.model2_confidence}} 
+  --model3_confidence ${{inputs.model3_confidence}} 
+  --model4_confidence ${{inputs.model4_confidence}} 
+  --model5_confidence ${{inputs.model5_confidence}} 
+  --model6_confidence ${{inputs.model6_confidence}} 
+  --model7_confidence ${{inputs.model7_confidence}} 
+  --model8_confidence ${{inputs.model8_confidence}} 
+  --cosmos_db $[[inputs.cosmos_db]] 
+  --key_vault_url "${{inputs.key_vault_url}}" 
+  --cosmos_db_name "${{inputs.cosmos_db_name}}" 
+  --cosmos_container_name "${{inputs.cosmos_container_name}}" 
+  --local ${{inputs.local}} 
+  --trace ${{inputs.trace}}
