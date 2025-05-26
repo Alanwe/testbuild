@@ -52,6 +52,51 @@ The following changes were implemented to fix these issues:
 2. Using the same job type as in the working `pipeline.yml` ensures consistent behavior
 3. Consistent parameter naming prevents mismatches between what the Azure ML job expects and what the workflow provides
 
+## Additional Component Type Fix
+
+A related issue was encountered when submitting jobs using the `azureml-job.yml` file, with the following error:
+
+```
+Validation for PipelineJobSchema failed:
+
+{
+ "result": "Failed",
+ "errors": [
+   {
+     "message": "Value 'parallel' passed is not in set ['command']",
+     "path": "jobs.facade_inference.component.type",
+     "value": "parallel",
+     "location": "/home/runner/work/testbuild/testbuild/component.yml#line 3"
+   }
+ ]
+} 
+```
+
+### Root Cause
+
+The component.yml file was defined as a parallel component (`type: parallel`) but both pipeline.yml and azureml-job.yml were trying to use it as a command component (`type: command`). Azure ML now requires these types to match explicitly.
+
+### Changes Made
+
+The following changes were implemented to fix this issue:
+
+1. Updated component.yml schema to use commandComponent schema instead of parallelComponent schema
+2. Changed component type from `parallel` to `command`
+3. Removed parallel-specific parameters (mini_batch_size, mini_batch_error_threshold, etc.)
+4. Updated the structure to match the command component format
+
+### Why These Changes Work
+
+By making component.yml a proper command component, it now matches the job type expected in both pipeline.yml and azureml-job.yml. This ensures validation passes and the job can be submitted successfully.
+
+### Future Considerations
+
+When working with Azure ML components:
+
+1. Ensure that the component type matches how it's used in job definitions
+2. Consider maintaining separate component definitions if different job types are needed
+3. Be aware that Azure ML validation is becoming stricter about schema compliance
+
 ## Future Considerations
 
 When making changes to Azure ML job definitions:
