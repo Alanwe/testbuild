@@ -10,7 +10,7 @@ inputs:
     type: string
   input_dataset:
     type: uri_folder
-  model:
+  main_model:
     type: mlflow_model
 
 # Pipeline job outputs
@@ -29,7 +29,7 @@ jobs:
     inputs:
       input_ds: ${{parent.inputs.input_dataset}}
       batch_id: ${{parent.inputs.batch_id}}
-      model1: ${{parent.inputs.model}}
+      model1: ${{parent.inputs.main_model}}
       window_size: 512
       overlap: 64
       confidence: 50
