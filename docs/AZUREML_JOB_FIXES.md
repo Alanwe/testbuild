@@ -52,6 +52,50 @@ The following changes were implemented to fix these issues:
 2. Using the same job type as in the working `pipeline.yml` ensures consistent behavior
 3. Consistent parameter naming prevents mismatches between what the Azure ML job expects and what the workflow provides
 
+## Additional Component Type Fix
+
+A related issue was encountered when submitting jobs using the `azureml-job.yml` file, with the following error:
+
+```
+Validation for PipelineJobSchema failed:
+
+{
+ "result": "Failed",
+ "errors": [
+   {
+     "message": "Value 'parallel' passed is not in set ['command']",
+     "path": "jobs.facade_inference.component.type",
+     "value": "parallel",
+     "location": "/home/runner/work/testbuild/testbuild/component.yml#line 3"
+   }
+ ]
+} 
+```
+
+### Root Cause
+
+The component.yml file was defined as a parallel component (`type: parallel`) but both pipeline.yml and azureml-job.yml were trying to use it as a command component (`type: command`). Azure ML now requires these types to match explicitly.
+
+### Changes Made
+
+The following changes were implemented to fix this issue:
+
+1. Updated pipeline.yml and azureml-job.yml to use the component as a parallel component
+2. Changed job type from `command` to `parallel` in both files to match the component type
+3. Kept the original parallel component structure and parameters
+
+### Why These Changes Work
+
+By making the job type in pipeline.yml and azureml-job.yml match the component type in component.yml, the validation passes and the job can be submitted successfully. This approach preserves the important parallel processing functionality needed for the facade image processing workflow.
+
+### Future Considerations
+
+When working with Azure ML components:
+
+1. Ensure that the component type matches how it's used in job definitions
+2. Consider maintaining separate component definitions if different job types are needed
+3. Be aware that Azure ML validation is becoming stricter about schema compliance
+
 ## Future Considerations
 
 When making changes to Azure ML job definitions:
