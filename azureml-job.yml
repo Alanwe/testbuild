@@ -1,4 +1,5 @@
 $schema: https://azuremlschemas.azureedge.net/latest/pipelineJob.schema.json
+type: pipeline
 name: facade-defect-detection
 display_name: Facade Defect Detection
 description: Pipeline job for detecting defects in facade images using the parallel component
@@ -9,7 +10,7 @@ inputs:
     type: string
   input_dataset:
     type: uri_folder
-  model:
+  main_model:
     type: mlflow_model
 
 # Pipeline job outputs
@@ -20,7 +21,7 @@ outputs:
 # Pipeline jobs using the component
 jobs:
   facade_inference:
-    type: parallel
+    type: command
     component: ./component.yml
     compute: azureml:cpu-cluster2
     resources:
@@ -28,7 +29,7 @@ jobs:
     inputs:
       input_ds: ${{parent.inputs.input_dataset}}
       batch_id: ${{parent.inputs.batch_id}}
-      model1: ${{parent.inputs.model}}
+      model1: ${{parent.inputs.main_model}}
       window_size: 512
       overlap: 64
       confidence: 50

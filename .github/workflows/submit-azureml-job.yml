@@ -100,7 +100,7 @@ jobs:
           # Set parameters for the job
           PARAMETERS="--set inputs.batch_id=${{ env.BATCH_ID }}"
           # Add model parameter, required by the command job schema
-          PARAMETERS="$PARAMETERS --set inputs.model=azureml:Glazing-Defects:1"
+          PARAMETERS="$PARAMETERS --set inputs.main_model=azureml:Glazing-Defects:1"
           # Add input_dataset parameter, required for uri_folder type input
           PARAMETERS="$PARAMETERS --set inputs.input_dataset=azureml:facade-inference-image-batches:1"
           
