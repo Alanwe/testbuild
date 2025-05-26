@@ -21,7 +21,7 @@ outputs:
 # Pipeline jobs using the component
 jobs:
   facade_inference:
-    type: parallel
+    type: command
     component: ./component.yml
     compute: azureml:cpu-cluster2
     resources:
