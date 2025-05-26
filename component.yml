@@ -1,6 +1,6 @@
-$schema: https://azuremlschemas.azureedge.net/latest/parallelComponent.schema.json
+$schema: https://azuremlschemas.azureedge.net/latest/commandComponent.schema.json
 name: parallel_facade_inference
-type: parallel
+type: command
 description: Parallel processing of facade images for AI-based defect detection using sliding window technique
 display_name: Parallel Facade AI Inference
 version: 4.0.8
