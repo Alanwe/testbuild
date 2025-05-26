@@ -142,13 +142,13 @@ command: >-
   --overlap ${{inputs.overlap}} 
   --confidence ${{inputs.confidence}} 
   --model1 ${{inputs.model1}} 
-  --model2 $[[inputs.model2]] 
-  --model3 $[[inputs.model3]] 
-  --model4 $[[inputs.model4]] 
-  --model5 $[[inputs.model5]] 
-  --model6 $[[inputs.model6]] 
-  --model7 $[[inputs.model7]] 
-  --model8 $[[inputs.model8]] 
+  --model2 ${{inputs.model2}} 
+  --model3 ${{inputs.model3}} 
+  --model4 ${{inputs.model4}} 
+  --model5 ${{inputs.model5}} 
+  --model6 ${{inputs.model6}} 
+  --model7 ${{inputs.model7}} 
+  --model8 ${{inputs.model8}} 
   --model1_confidence ${{inputs.model1_confidence}} 
   --model2_confidence ${{inputs.model2_confidence}} 
   --model3_confidence ${{inputs.model3_confidence}} 
@@ -157,7 +157,7 @@ command: >-
   --model6_confidence ${{inputs.model6_confidence}} 
   --model7_confidence ${{inputs.model7_confidence}} 
   --model8_confidence ${{inputs.model8_confidence}} 
-  --cosmos_db $[[inputs.cosmos_db]] 
+  --cosmos_db ${{inputs.cosmos_db}} 
   --key_vault_url "${{inputs.key_vault_url}}" 
   --cosmos_db_name "${{inputs.cosmos_db_name}}" 
   --cosmos_container_name "${{inputs.cosmos_container_name}}" 
