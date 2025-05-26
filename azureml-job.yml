@@ -1,4 +1,5 @@
 $schema: https://azuremlschemas.azureedge.net/latest/pipelineJob.schema.json
+type: pipeline
 name: facade-defect-detection
 display_name: Facade Defect Detection
 description: Pipeline job for detecting defects in facade images using the parallel component
