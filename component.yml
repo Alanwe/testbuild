@@ -121,29 +121,19 @@ outputs:
     description: Output folder for results
 
 code: .
-    
-mini_batch_size: "30"
+
 resources:
   instance_count: 2
-mini_batch_error_threshold: 5
-logging_level: "DEBUG"
-input_data: ${{inputs.input_ds}}
-max_concurrency_per_instance: 2
-retry_settings:
-  max_retries: 2
-  timeout: 60
 
-task:
-  type: run_function
-  entry_script: src/component.py
-  environment:
-    conda_file: ./environment.yml
-    image: mcr.microsoft.com/azureml/openmpi4.1.0-ubuntu20.04
+environment:
+  conda_file: ./environment.yml
+  image: mcr.microsoft.com/azureml/openmpi4.1.0-ubuntu20.04
   environment_variables:
     PYTHONPATH: "."
     PYTHONUNBUFFERED: "1"
 
-  program_arguments: >-
+command: >-
+  python src/component.py
     --input_ds ${{inputs.input_ds}} 
     --output_data ${{outputs.output_data}} 
     --batch_id ${{inputs.batch_id}} 
