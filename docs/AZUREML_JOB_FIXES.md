@@ -80,14 +80,13 @@ The component.yml file was defined as a parallel component (`type: parallel`) bu
 
 The following changes were implemented to fix this issue:
 
-1. Updated component.yml schema to use commandComponent schema instead of parallelComponent schema
-2. Changed component type from `parallel` to `command`
-3. Removed parallel-specific parameters (mini_batch_size, mini_batch_error_threshold, etc.)
-4. Updated the structure to match the command component format
+1. Updated pipeline.yml and azureml-job.yml to use the component as a parallel component
+2. Changed job type from `command` to `parallel` in both files to match the component type
+3. Kept the original parallel component structure and parameters
 
 ### Why These Changes Work
 
-By making component.yml a proper command component, it now matches the job type expected in both pipeline.yml and azureml-job.yml. This ensures validation passes and the job can be submitted successfully.
+By making the job type in pipeline.yml and azureml-job.yml match the component type in component.yml, the validation passes and the job can be submitted successfully. This approach preserves the important parallel processing functionality needed for the facade image processing workflow.
 
 ### Future Considerations
 

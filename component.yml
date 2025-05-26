@@ -1,6 +1,6 @@
-$schema: https://azuremlschemas.azureedge.net/latest/commandComponent.schema.json
+$schema: https://azuremlschemas.azureedge.net/latest/parallelComponent.schema.json
 name: parallel_facade_inference
-type: command
+type: parallel
 description: Parallel processing of facade images for AI-based defect detection using sliding window technique
 display_name: Parallel Facade AI Inference
 version: 4.0.8
@@ -121,19 +121,29 @@ outputs:
     description: Output folder for results
 
 code: .
-
+    
+mini_batch_size: "30"
 resources:
   instance_count: 2
+mini_batch_error_threshold: 5
+logging_level: "DEBUG"
+input_data: ${{inputs.input_ds}}
+max_concurrency_per_instance: 2
+retry_settings:
+  max_retries: 2
+  timeout: 60
 
-environment:
-  conda_file: ./environment.yml
-  image: mcr.microsoft.com/azureml/openmpi4.1.0-ubuntu20.04
+task:
+  type: run_function
+  entry_script: src/component.py
+  environment:
+    conda_file: ./environment.yml
+    image: mcr.microsoft.com/azureml/openmpi4.1.0-ubuntu20.04
   environment_variables:
     PYTHONPATH: "."
     PYTHONUNBUFFERED: "1"
 
-command: >-
-  python src/component.py
+  program_arguments: >-
     --input_ds ${{inputs.input_ds}} 
     --output_data ${{outputs.output_data}} 
     --batch_id ${{inputs.batch_id}} 

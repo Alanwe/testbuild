@@ -52,7 +52,7 @@ outputs:
 # Pipeline jobs
 jobs:
   facade_inference:
-    type: command
+    type: parallel
     component: ./component.yml
     compute: azureml:gpu-cluster
     resources:
